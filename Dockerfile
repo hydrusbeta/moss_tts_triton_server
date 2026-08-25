@@ -1,3 +1,6 @@
+# Build as:
+# docker build --tag hydrusbeta/hay_say:moss_tts_triton_server .
+
 FROM nvcr.io/nvidia/tritonserver:26.07-py3
 RUN apt update && apt install -y --no-install-recommends \
     git \
@@ -13,9 +16,11 @@ USER $LIMITED_USER
 # do not expand the tilde (~) character to /home/<user>, so define a temporary variable to use instead.
 ARG HOME_DIR=/home/$LIMITED_USER
 
-# Download the pretrained emotion classifier
+# Download the text tokenizer config and the main Moss TTS model
 RUN mkdir -p ~/hay_say/temp_downloads/moss_tts_local_clipper_checkpoint/ && \
-    wget https://huggingface.co/ZDisket/MOSS-TTS-PNY/resolve/main/moss_tts_local_clipper_checkpoint/tokenizer.json --directory-prefix=$HOME_DIR/hay_say/temp_downloads/moss_tts_local_clipper_checkpoint/
+    wget https://huggingface.co/ZDisket/MOSS-TTS-PNY/resolve/main/moss_tts_local_clipper_checkpoint/tokenizer.json --directory-prefix=$HOME_DIR/hay_say/temp_downloads/moss_tts_local_clipper_checkpoint/ && \
+    wget https://huggingface.co/ZDisket/MOSS-TTS-PNY/resolve/main/moss_tts_local_clipper_checkpoint/pytorch_model-00001-of-00002.bin --directory-prefix=$HOME_DIR/hay_say/temp_downloads/moss_tts_local_clipper_checkpoint/ && \
+    wget https://huggingface.co/ZDisket/MOSS-TTS-PNY/resolve/main/moss_tts_local_clipper_checkpoint/pytorch_model-00002-of-00002.bin --directory-prefix=$HOME_DIR/hay_say/temp_downloads/moss_tts_local_clipper_checkpoint/
 
 # Download the pretrained audio tokenizer models.
 RUN mkdir -p ~/hay_say/temp_downloads/moss_audio_tokenizer/ && \
@@ -29,15 +34,16 @@ RUN mkdir -p ~/hay_say/temp_downloads/istftnet2_decoder4_50hz/ && \
     wget https://huggingface.co/ZDisket/MOSS-TTS-PNY/resolve/main/istftnet2_decoder4_50hz/istftnet2_decoder_cuda.ts --directory-prefix=$HOME_DIR/hay_say/temp_downloads/istftnet2_decoder4_50hz/
 
 # Install all python dependencies for the Hay Say interface code and for MOSS-TTS that are needed for inference.
+# Clear the pip cache beforehand because the base tritonserver image comes with stuff in its cache that can interfere with pip install.
 # Note: This is done *before* cloning the repository because the dependencies are likely to change less often than the
 # MOSS-TTS code itself. Cloning the repo after installing the requirements helps the Docker cache optimize build time.
 # See https://docs.docker.com/build/cache
-RUN pip install \
+RUN pip cache purge && \
+    pip install \
     --timeout=300 \
     --no-cache-dir \
     --extra-index-url https://download.pytorch.org/whl/cu128/ \
     gradio \
-    hay_say_common==1.0.8 \
     huggingface-hub\<1.0 \
     jsonschema==4.25.1 \
     numpy\<2 \
@@ -76,19 +82,21 @@ RUN rm ~/hay_say/moss_tts/moss_tts_local_clipper_checkpoint/tokenizer.json && \
     rm -r ~/hay_say/temp_downloads/
 
 # Clone the tritonserver code (this repo)
-RUN git clone -b main --single-branch -q https://github.com/hydrusbeta/moss_tts_triton_server.git ~/hay_say/tritonserver
+COPY --chown=$LIMITED_USER:$LIMITED_USER . $HOME_DIR/hay_say/tritonserver/
+# Todo: use the following clone command instead if this repo goes public
+# RUN git clone -b main --single-branch -q https://github.com/hydrusbeta/moss_tts_triton_server.git ~/hay_say/tritonserver
 WORKDIR $HOME_DIR/hay_say/tritonserver
+
+# Make a small correction to an import statement:
+RUN sed -i 's\from decoder4_features_torch\from moss_tts_torchopt_runner_bundle.decoder4_features_torch\' ~/hay_say/tritonserver/model_repository/moss_tts/1/moss_tts_torchopt_runner_bundle/portable_tts_runtime.py
 
 # Combine the two projects
 RUN mv ~/hay_say/moss_tts/istftnet2_decoder4_50hz/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	mv ~/hay_say/moss_tts/moss_audio_tokenizer/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	mv ~/hay_say/moss_tts/moss_tts_local_clipper_checkpoint/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	mv ~/hay_say/moss_tts/moss_tts_torchopt_runner_bundle/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
-	rm -r ~/hay_say/moss_tts/ \
+	rm -r ~/hay_say/moss_tts/
 
-# Make a small correction to an import statement:
-RUN sed -i 's\from decoder4_features_torch\from moss_tts_torchopt_runner_bundle.decoder4_features_torch\' ~/hay_say/tritonserver/model_repository/moss_tts/1/moss_tts_torchopt_runner_bundle/portable_tts_runtime.py
+EXPOSE 8000
 
-EXPOSE 6582
-
-CMD ["/bin/sh", "-c", "tritonserver --model-repository=~/hay_say/tritonserver/model_repository/ & ~/hay_say/tritonserver/main.py --cache_implementation file'"]
+CMD ["tritonserver", "--model-repository=~/hay_say/tritonserver/model_repository/"]
