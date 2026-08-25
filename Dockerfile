@@ -87,15 +87,15 @@ COPY --chown=$LIMITED_USER:$LIMITED_USER . $HOME_DIR/hay_say/tritonserver/
 # RUN git clone -b main --single-branch -q https://github.com/hydrusbeta/moss_tts_triton_server.git ~/hay_say/tritonserver
 WORKDIR $HOME_DIR/hay_say/tritonserver
 
-# Make a small correction to an import statement:
-RUN sed -i 's\from decoder4_features_torch\from moss_tts_torchopt_runner_bundle.decoder4_features_torch\' ~/hay_say/tritonserver/model_repository/moss_tts/1/moss_tts_torchopt_runner_bundle/portable_tts_runtime.py
-
 # Combine the two projects
 RUN mv ~/hay_say/moss_tts/istftnet2_decoder4_50hz/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	mv ~/hay_say/moss_tts/moss_audio_tokenizer/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	mv ~/hay_say/moss_tts/moss_tts_local_clipper_checkpoint/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	mv ~/hay_say/moss_tts/moss_tts_torchopt_runner_bundle/ ~/hay_say/tritonserver/model_repository/moss_tts/1/ && \
 	rm -r ~/hay_say/moss_tts/
+
+# Make a small correction to an import statement:
+RUN sed -i 's\from decoder4_features_torch\from moss_tts_torchopt_runner_bundle.decoder4_features_torch\' ~/hay_say/tritonserver/model_repository/moss_tts/1/moss_tts_torchopt_runner_bundle/portable_tts_runtime.py
 
 EXPOSE 8000
 
