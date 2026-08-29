@@ -1,3 +1,11 @@
+# Quick copyright/license note
+# Much of the code in this file is taken from the following repo and modified:
+# https://huggingface.co/ZDisket/MOSS-TTS-PNY/blob/main/moss_tts_torchopt_runner_bundle/portable_tts_runtime.py
+# That repo is owned by ZDisket/Delta, who communicated to me that their code is open source and may be redistributed.
+# I suspect that ZDisket referenced some sample code from the following repo while writing their own code:
+# https://huggingface.co/OpenMOSS-Team/MOSS-TTS
+# As of the time of this writing, that code is licensed under Apache 2.0.
+
 import os.path
 import gc
 import time
